@@ -11,9 +11,13 @@ FPS = 30
 
 MIN_SPEED = 3.5
 
+pygame.init()
 
 WIN = pygame.display.set_mode((WIDTH,HEIGHT))
 UFO = scale_image(pygame.image.load("imgs/FlyingObject.png"),0.03)
+GAME_FONT = pygame.font.SysFont("Cambria", 25)
+
+
 
 ########################################
 ####        Global Variables        ####
@@ -25,12 +29,22 @@ objects = [
 pygame.display.set_caption("UFO game")
 clock = pygame.time.Clock()
 
+class TextMsg:
+    def __init__(self,x,y,text,color):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.img = GAME_FONT.render(text, 1, color)
+        objects.append(self)
+    
+    def setText(self,text):
+        self.img = GAME_FONT.render(text,1,self.color)
 
 class World:
     gravity = 9.8
     airDensity = 1.0
-    airFriction = 0.0   # ms-2 per ms-1
-    gravityMultiplier = 1.5
+    airFriction = 1.5   # ms-2 per ms-1
+    gravityMultiplier = 2.0
 
 
 class AbstractUFO(World):
@@ -40,10 +54,10 @@ class AbstractUFO(World):
     mass = 50.0
     fuelCap = 10.0
     fuelLevel = 10.0
-    fuelEfficency = 0.1
+    fuelEfficency = 0.99
     enginForce = 2000.0
     acceleration = enginForce/mass
-    liftingEnginCount = 1
+    liftingEnginCount = 2
     HorizontalAirFrictionMultiplier = 1.0
     VerticalAirFrictionMultiplier = 0.5
     speedX = 0.0
@@ -76,28 +90,43 @@ class AbstractUFO(World):
             self.y = tmp
             self.speedY = deltaY/deltaT
 
+    def burnFuel(self,multiplier=1):
+        if self.fuelLevel-(multiplier * (1.0-self.fuelEfficency))>=0.0:
+            self.fuelLevel -= (multiplier * (1.0-self.fuelEfficency))
+        else:
+            self.fuelLevel = 0.0
+
 
     
     def moveLeft(self):
-        dt = clock.get_time()/1000.0
-        dx = self.speedX * dt + (abs(self.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX)+(-1*self.acceleration))*(dt**2)
-        # print('dx',dx)
-        self.shiftXPosition(dx,dt)
-        # print('ml',self.speedX)
+        if self.fuelLevel>0:
+            dt = clock.get_time()/1000.0
+            dx = self.speedX * dt + (abs(self.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX)+(-1*self.acceleration))*(dt**2)
+            # print('dx',dx)
+            self.shiftXPosition(dx,dt)
+            self.burnFuel()
+        else:
+            self.burnLinearInertiaX()
 
     def moveRight(self):
-        dt = clock.get_time()/1000.0
-        dx = self.speedX * dt + (-1*abs(self.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX)+(self.acceleration))*(dt**2)
-        # print('dx',dx)
-        self.shiftXPosition(dx,dt)
-        # print('ml',self.speedX)
+        if self.fuelLevel>0:
+            dt = clock.get_time()/1000.0
+            dx = self.speedX * dt + (-1*abs(self.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX)+(self.acceleration))*(dt**2)
+            # print('dx',dx)
+            self.shiftXPosition(dx,dt)
+            self.burnFuel()
+        else:
+            self.burnLinearInertiaX()
 
     def moveUp(self):
-        dt = clock.get_time()/1000.0
-        dy = self.speedY * dt + (-1*abs(self.airFriction * self.VerticalAirFrictionMultiplier * self.speedY)+(self.liftingEnginCount*self.acceleration - self.gravity*self.gravityMultiplier))*(dt**2)
-        # print('dy',dy)
-        self.shiftYPosition(dy,dt)
-        # print('mu',self.speedY)
+        if self.fuelLevel>0:
+            dt = clock.get_time()/1000.0
+            dy = self.speedY * dt + (-1*abs(self.airFriction * self.VerticalAirFrictionMultiplier * self.speedY)+(self.liftingEnginCount*self.acceleration - self.gravity*self.gravityMultiplier))*(dt**2)
+            # print('dy',dy)
+            self.shiftYPosition(dy,dt)
+            self.burnFuel(self.liftingEnginCount)
+        else:
+            self.burnLinearInertiaY()
 
 
     def burnLinearInertiaX(self):
@@ -131,16 +160,19 @@ class Level1UFO(AbstractUFO):
         self.y = y
         objects.append(self)
 
+
+ufo = Level1UFO(400,500)
+score = TextMsg(5,0,'Score: 0',(0,0,0))
+fuel = TextMsg(5,28,'Fuel: {:.7}/{:.5}'.format(ufo.fuelLevel,ufo.fuelCap),(0,0,0))
+
+
 def draw(win,objs):
-    WIN.fill((0,0,50))
+    fuel.setText('Fuel: {:.7}/{:.5}'.format(ufo.fuelLevel,ufo.fuelCap))
+    WIN.fill((110,120,150))
     for obj in objs:
         win.blit(obj.img,(obj.x,obj.y))
 
     pygame.display.update()
-
-
-
-ufo = Level1UFO(400,500)
 
 run = True
 while run:
