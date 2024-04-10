@@ -29,62 +29,85 @@ clock = pygame.time.Clock()
 class World:
     gravity = 9.8
     airDensity = 1.0
-    airFriction = 0.5   # ms-2 per ms-1
-
+    airFriction = 0.0   # ms-2 per ms-1
+    gravityMultiplier = 1.5
 
 
 class AbstractUFO(World):
     X = 0
     Y = 0
     img = UFO
-    mass = 10.0
+    mass = 50.0
     fuelCap = 10.0
     fuelLevel = 10.0
     fuelEfficency = 0.1
     enginForce = 2000.0
     acceleration = enginForce/mass
-    liftingEnginCount = 2
+    liftingEnginCount = 1
+    HorizontalAirFrictionMultiplier = 1.0
+    VerticalAirFrictionMultiplier = 0.5
     speedX = 0.0
     speedY = 0.0
     def __init__(self):
         self.x = self.X
         self.y = self.Y
+
+    def shiftXPosition(self,deltaX,deltaT):
+        tmp = self.x + deltaX
+        if tmp<0:
+            self.speedX = 0.0
+            self.x = 0.0
+        elif tmp>WIDTH-self.img.get_width():
+            self.speedX = 0.0
+            self.x = WIDTH-self.img.get_width()
+        else:
+            self.x = tmp
+            self.speedX = deltaX/deltaT
+        
+    def shiftYPosition(self,deltaY,deltaT):
+        tmp = self.y - deltaY
+        if tmp<0:
+            self.speedY = 0.0
+            self.y = 0.0
+        elif tmp>HEIGHT-self.img.get_height():
+            self.speedY = 0.0
+            self.y = HEIGHT-self.img.get_height()
+        else:
+            self.y = tmp
+            self.speedY = deltaY/deltaT
+
+
     
     def moveLeft(self):
         dt = clock.get_time()/1000.0
-        dx = self.speedX * dt + (abs(self.airFriction * self.speedX)+(-1*self.acceleration))*(dt**2)
+        dx = self.speedX * dt + (abs(self.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX)+(-1*self.acceleration))*(dt**2)
         # print('dx',dx)
-        self.x += dx
-        self.speedX = dx/dt
+        self.shiftXPosition(dx,dt)
         # print('ml',self.speedX)
 
     def moveRight(self):
         dt = clock.get_time()/1000.0
-        dx = self.speedX * dt + (-1*abs(self.airFriction * self.speedX)+(self.acceleration))*(dt**2)
+        dx = self.speedX * dt + (-1*abs(self.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX)+(self.acceleration))*(dt**2)
         # print('dx',dx)
-        self.x += dx
-        self.speedX = dx/dt
+        self.shiftXPosition(dx,dt)
         # print('ml',self.speedX)
 
     def moveUp(self):
         dt = clock.get_time()/1000.0
-        dy = self.speedY * dt + (-1*abs(self.airFriction * self.speedY)+(self.liftingEnginCount*self.acceleration - self.gravity))*(dt**2)
-        print('dy',dy)
-        self.y -= dy
-        self.speedY = dy/dt
-        print('mu',self.speedY)
+        dy = self.speedY * dt + (-1*abs(self.airFriction * self.VerticalAirFrictionMultiplier * self.speedY)+(self.liftingEnginCount*self.acceleration - self.gravity*self.gravityMultiplier))*(dt**2)
+        # print('dy',dy)
+        self.shiftYPosition(dy,dt)
+        # print('mu',self.speedY)
 
 
     def burnLinearInertiaX(self):
         dt = clock.get_time()/1000.0
         if self.speedX > MIN_SPEED:
-            dx = self.speedX * dt + (-1*abs(self.airFriction * self.speedX))*(dt**2)
-            self.x += dx
-            self.speedX =dx/dt
+            dx = self.speedX * dt + (-1*abs(self.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX))*(dt**2)
+            self.shiftXPosition(dx,dt)
         elif self.speedX < -1* MIN_SPEED:
-            dx = self.speedX * dt + (abs(self.airFriction * self.speedX))*(dt**2)
-            self.x += dx
-            self.speedX = dx/dt
+            dx = self.speedX * dt + (abs(self.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX))*(dt**2)
+            self.shiftXPosition(dx,dt)
         else:
             self.speedX = 0.0
         # print('burn',self.speedX)
@@ -92,16 +115,12 @@ class AbstractUFO(World):
     def burnLinearInertiaY(self):
         dt = clock.get_time()/1000.0
         if self.speedY <= 0.0:
-            dy = self.speedY * dt + (abs(self.airFriction * self.speedY)-self.gravity)*(dt**2)
-            print('accd:',abs(self.airFriction * self.speedY)-self.gravity)
-            self.y -= dy
-            self.speedY = dy/dt
+            dy = self.speedY * dt + (abs(self.airFriction * self.VerticalAirFrictionMultiplier * self.speedY)-self.gravity*self.gravityMultiplier)*(dt**2)
+            self.shiftYPosition(dy,dt)
         elif self.speedY > 0.0:
-            dy = self.speedY * dt + (-1*abs(self.airFriction * self.speedY)-self.gravity)*(dt**2)
-            print('accu:',-1*abs(self.airFriction * self.speedY)-self.gravity)
-            self.y -= dy
-            self.speedY = dy/dt
-        print('burnY',self.speedY)
+            dy = self.speedY * dt + (-1*abs(self.airFriction * self.VerticalAirFrictionMultiplier * self.speedY)-self.gravity*self.gravityMultiplier)*(dt**2)
+            self.shiftYPosition(dy,dt)
+        # print('burnY',self.speedY)
 
 
 
@@ -113,7 +132,7 @@ class Level1UFO(AbstractUFO):
         objects.append(self)
 
 def draw(win,objs):
-    WIN.fill((0,0,120))
+    WIN.fill((0,0,50))
     for obj in objs:
         win.blit(obj.img,(obj.x,obj.y))
 
