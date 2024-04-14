@@ -5,7 +5,7 @@ from colors import *
 ########################################
 ####        Global Consts           ####
 ########################################
-WIDTH,HEIGHT = 800,800
+WIDTH,HEIGHT = 1200,800
 FPS = 60
 
 MIN_SPEED = 3.5
@@ -13,11 +13,15 @@ MIN_SPEED = 3.5
 pygame.init()
 
 WIN = pygame.display.set_mode((WIDTH,HEIGHT))
+BACKGROUND = scale_image(pygame.image.load("imgs/lava.png"),1.5)
 UFO = scale_image(pygame.image.load("imgs/FlyingObject.png"),0.03)
 OBSTACLE = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.2)
-FUEL_CAN = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.05)
-COIN = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.03)
+FUEL_CAN = scale_image(pygame.image.load("imgs/fuel.png"),0.05)
+COIN = scale_image(pygame.image.load("imgs/chip.png"),0.4)
+GAME_OBJECTIVE = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.1)
 GAME_FONT = pygame.font.SysFont("Cambria", 25)
+OFFSET = 600
+CAM_BOX = pygame.Rect(100,0,WIDTH - OFFSET,HEIGHT)
 
 
 ########################################
@@ -28,6 +32,7 @@ pygame.display.set_caption("UFO game")
 clock = pygame.time.Clock()
 
 coinsValue = 0
+current_offset = 0
 
 class TextMsg(pygame.sprite.Sprite):
     def __init__(self,x,y,getText,color):
@@ -49,7 +54,6 @@ class World:
     airFriction = 0.2   # ms-2 per ms-1
     xMultiplier = 5.8
     yMultiplier = 10.5
-
 
 class AbstractUFO(pygame.sprite.Sprite):
     x = 0
@@ -246,7 +250,8 @@ class obstacle(pygame.sprite.Sprite):
         self.rect.topleft = (self.x,self.y)
         self.mask = pygame.mask.from_surface(self.image)
         self.e = e
-
+    def update(self):
+        self.rect.topleft = (self.x,self.y)
 
 class FuelCan(pygame.sprite.Sprite):
     def __init__(self,x,y,image,fuelLevel):
@@ -258,6 +263,8 @@ class FuelCan(pygame.sprite.Sprite):
         self.rect.topleft = (self.x,self.y)
         self.mask = pygame.mask.from_surface(self.image)
         self.fuelLevel = fuelLevel
+    def update(self):
+        self.rect.topleft = (self.x,self.y)
 
 class Coins(pygame.sprite.Sprite):
     def __init__(self,x,y,image,value):
@@ -269,6 +276,22 @@ class Coins(pygame.sprite.Sprite):
         self.rect.topleft = (self.x,self.y)
         self.mask = pygame.mask.from_surface(self.image)
         self.value = value
+    
+    def update(self):
+        self.rect.topleft = (self.x,self.y)
+
+class GameObjective(pygame.sprite.Sprite):
+    def __init__(self,x,y,image):
+        pygame.sprite.Sprite.__init__(self)
+        self.x = x
+        self.y = y
+        self.image = image
+        self.rect = self.image.get_rect()
+        self.rect.topleft = (self.x,self.y)
+        self.mask = pygame.mask.from_surface(self.image)
+
+    def update(self):
+        self.rect.topleft = (self.x,self.y)
 
 class Level1UFO(AbstractUFO):
     def __init__(self,x,y,world):
@@ -276,11 +299,23 @@ class Level1UFO(AbstractUFO):
         self.x = x
         self.y = y
 
+class Background(pygame.sprite.Sprite):
+    def __init__(self,x,y,image):
+        pygame.sprite.Sprite.__init__(self)
+        self.x = x
+        self.y = y
+        self.image = image
+        self.rect = self.image.get_rect()
+        self.rect.topleft = (self.x,self.y)
+        self.mask = pygame.mask.from_surface(self.image)
+    
+    def update(self):
+        self.rect.topleft = (self.x,self.y)
 
 
 world = World()
 ufo = Level1UFO(400,500,world)
-scoreLabmda = lambda: 'Score: {}'.format(0)
+scoreLabmda = lambda: 'Chips: {}'.format(coinsValue)
 fuelLambda = lambda: 'Fuel: {:.7}/{:.5}'.format(ufo.fuelLevel,ufo.fuelCap)
 score = TextMsg(5,0,scoreLabmda,WHITE)
 fuel = TextMsg(5,28,fuelLambda,WHITE)
@@ -289,6 +324,8 @@ obs1 = obstacle(100,100,OBSTACLE,0.1)
 obs2 = obstacle(400,600,OBSTACLE,0.8)
 fuelcan1 = FuelCan(550,500,FUEL_CAN,5.0)
 coin = Coins(200,200,COIN,1)
+gameObjective = GameObjective(900,400,GAME_OBJECTIVE)
+background = Background(0,0,BACKGROUND)
 
 bullet_group = pygame.sprite.Group()
 ufo_group = pygame.sprite.Group()
@@ -296,6 +333,8 @@ text_group = pygame.sprite.Group()
 obstacle_group = pygame.sprite.Group()
 fuel_can_group = pygame.sprite.Group()
 coins_group = pygame.sprite.Group()
+gameObjective_group = pygame.sprite.Group()
+background_group = pygame.sprite.Group()
 
 bullet_group.add(bullet)
 ufo_group.add(ufo)
@@ -305,8 +344,27 @@ obstacle_group.add(obs1)
 obstacle_group.add(obs2)
 fuel_can_group.add(fuelcan1)
 coins_group.add(coin)
+gameObjective_group.add(gameObjective)
+background_group.add(background)
 
 color = RED
+
+def keepInCamBounds(allObjects):
+    global current_offset
+    if ufo.x <= CAM_BOX.left:
+        print('ufo going left',allObjects)
+        current_offset += CAM_BOX.left - ufo.x
+        for obj_grp in allObjects:
+            for obj in obj_grp:
+                obj.x += CAM_BOX.left - ufo.x
+                obj.update()
+    elif ufo.x >= CAM_BOX.right:
+        print('ufo going right')
+        current_offset -= ufo.x - CAM_BOX.right
+        for obj_grp in allObjects:
+            for obj in obj_grp:
+                obj.x -= ufo.x - CAM_BOX.right
+                obj.update()
 
 def draw(win):
     WIN.fill(DARK_TEAL)
@@ -328,25 +386,37 @@ def draw(win):
         for c in coinsColisions:
             coinsValue += c.value
 
-
+    gameObjectiveColisions = pygame.sprite.spritecollide(ufo,gameObjective_group,True)
+    if gameObjectiveColisions:
+        print('You Win')
+        global run
+        run = False
         
+    
+    
+    keepInCamBounds([obstacle_group,fuel_can_group,coins_group,gameObjective_group,background_group,ufo_group])
     
     bullet_group.update(color)
     ufo_group.update()
     text_group.update()
 
+    background_group.draw(WIN)
     ufo_group.draw(WIN)
-    bullet_group.draw(WIN)
-    text_group.draw(WIN)
     obstacle_group.draw(WIN)
     fuel_can_group.draw(WIN)
     coins_group.draw(WIN)
+    gameObjective_group.draw(WIN)
+    text_group.draw(WIN)
+    bullet_group.draw(WIN)
+
+    pygame.draw.rect(WIN,PURPLE,CAM_BOX,2)
 
     pygame.display.update()
 
 run = True
 while run:
     clock.tick(FPS)
+    pygame.mouse.set_visible(False)
     draw(WIN)
 
 
