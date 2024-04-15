@@ -8,7 +8,8 @@ import json
 ####        Global Consts           ####
 ########################################
 WIDTH,HEIGHT = 1200,800
-FPS = 60
+FPS = 32
+TILES_RES = 64
 
 MIN_SPEED = 3.5
 
@@ -18,17 +19,19 @@ WIN = pygame.display.set_mode((WIDTH,HEIGHT))
 BACKGROUND = scale_image(pygame.image.load("imgs/lava.png"),1.5)
 UFO = scale_image(pygame.image.load("imgs/UFO.png"),0.8)
 OBSTACLE = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.2)
-FUEL_CAN = scale_image(pygame.image.load("imgs/fuel.png"),0.05)
+FUEL_CAN = scale_image(pygame.image.load("imgs/fuel.png"),0.7)
 COIN = scale_image(pygame.image.load("imgs/chip.png"),0.4)
 GAME_OBJECTIVE = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.1)
 GAME_FONT = pygame.font.SysFont("Cambria", 25)
 OFFSET = 600
 CAM_BOX = pygame.Rect(100,0,WIDTH - OFFSET,HEIGHT)
+MAX_OFFSET = 0
+MIN_OFFSET = -232
 
 
 # load level data 
 
-json_data = open('levels/level1.tmj').read()
+json_data = open('levels/level3.tmj').read()
 data = json.loads(json_data)
 del(json_data)
 
@@ -39,7 +42,6 @@ del(json_data)
 
 pygame.display.set_caption("UFO game")
 clock = pygame.time.Clock()
-
 coinsValue = 0
 current_offset = 0
 
@@ -67,7 +69,6 @@ class World:
 class AbstractUFO(pygame.sprite.Sprite):
     x = 0
     y = 0
-    img = UFO
     mass = 50.0
     fuelCap = 10.0
     fuelLevel = 10.0
@@ -86,9 +87,10 @@ class AbstractUFO(pygame.sprite.Sprite):
     isColidedTop = False
     isColidedBottom = False
 
-    def __init__(self,world):
+    def __init__(self,img,world):
         pygame.sprite.Sprite.__init__(self)
         self.world = world
+        self.img = img
         self.image = self.img.convert_alpha()
         self.rect = self.image.get_rect()
         self.rect.topleft = (self.x,self.y)
@@ -110,7 +112,9 @@ class AbstractUFO(pygame.sprite.Sprite):
         if not (self.isColidedTop or self.isColidedBottom or self.isColidedLeft or self.isColidedRight):
             for obs in colisions:
                 print(obs.rect.left,obs.rect.right,obs.rect.top,obs.rect.bottom,self.rect.left,self.rect.right,self.rect.top,self.rect.bottom)
-                offset = max(self.rect.right - obs.rect.left,self.rect.bottom - obs.rect.top)/5
+                # offset = max(self.rect.right - obs.rect.left,self.rect.bottom - obs.rect.top)/5
+                offset = max([self.speedX*5,self.speedY*5,10])
+                print('offset',offset)
                 self.prevPos = (self.x,self.y)
                 if obs.rect.bottom > self.rect.top and obs.rect.bottom < self.rect.top+offset:
                     print('collision at bottom')
@@ -303,8 +307,8 @@ class GameObjective(pygame.sprite.Sprite):
         self.rect.topleft = (self.x,self.y)
 
 class Level1UFO(AbstractUFO):
-    def __init__(self,x,y,world):
-        super().__init__(world)
+    def __init__(self,x,y,img,world):
+        super().__init__(img,world)
         self.x = x
         self.y = y
 
@@ -342,20 +346,108 @@ coins_group = pygame.sprite.Group()
 gameObjective_group = pygame.sprite.Group()
 background_group = pygame.sprite.Group()
 
+
+world = World()
+
+mapProp = data['layers'][0]['properties']
+for prop in mapProp:
+    if prop['name'] == 'gravity':
+        world.gravity = prop['value']
+    elif prop['name'] == 'airFriction':
+        world.airFriction = prop['value']
+    elif prop['name'] == 'xMultiplier':
+        world.xMultiplier = prop['value']
+    elif prop['name'] == 'yMultiplier':
+        world.yMultiplier = prop['value']
+    elif prop['name'] == 'offset_min':
+        MIN_OFFSET = prop['value']
+    elif prop['name'] == 'offset_max':
+        MAX_OFFSET = prop['value']
+
 for layer in data['layers']:
-    if layer['name'] == 'BaseLayer':
-        print('loading base layer')
-        l = pygame.Surface((data['width'] * 32, data['height'] * 32))
+    if layer['name'] == 'BaseLayer' or layer['name'] == 'Non_Interactive_obstacles':
+        print('loading background...')
+        l = pygame.Surface((data['width'] * TILES_RES, data['height'] * TILES_RES))
         l.set_colorkey((0,0,0))
         for x in range(data['width']):
             for y in range(data['height']):
                 print('loading...',layer['data'][x + y * data['width']])
                 tile = tiles.getTile(layer['data'][x + y * data['width']])
-                l.blit(tile, (x * 32, y * 32))
-                layerData[layer['name']]={ 'data': l, 'x': layer['x'], 'y': layer['y']}
+                l.blit(tile, (x * TILES_RES, y * TILES_RES))
+        layerData[layer['name']]={ 'data': l, 'x': layer['x'], 'y': layer['y']}
+    elif layer['name'] == 'Interactive_obstacles':
+        print('loading obstacles...')
+        eVal = 0.8
+        for prop in layer['properties']:
+            if prop['name'] == 'e':
+                eVal = float(prop['value'])
+        for x in range(data['width']):
+            for y in range(data['height']):
+                if layer['data'][x + y * data['width']] != 0:
+                    obs = obstacle(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),eVal)
+                    obstacle_group.add(obs)
+    elif layer['name'] == 'Fuel':
+            print('loading fuel...')
+            fuelLevels = 0.5
+            for prop in layer['properties']:
+                if prop['name'] == 'fuelLevel':
+                    fuelLevels = float(prop['value'])
+            for x in range(data['width']):
+                for y in range(data['height']):
+                    if layer['data'][x + y * data['width']] != 0:
+                        fuel = FuelCan(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),fuelLevels)
+                        fuel_can_group.add(fuel)
+    elif layer['name'] == 'Coin':
+            print('loading coins...')
+            cVal = 1
+            for prop in layer['properties']:
+                if prop['name'] == 'value':
+                    cVal = int(prop['value'])
+            for x in range(data['width']):
+                for y in range(data['height']):
+                    if layer['data'][x + y * data['width']] != 0:
+                        coin = Coins(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),cVal)
+                        coins_group.add(coin)
+    elif layer['name'] == 'Game_Objective':
+            print('loading game objective...')
+            for x in range(data['width']):
+                for y in range(data['height']):
+                    if layer['data'][x + y * data['width']] != 0:
+                        gobj = GameObjective(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]))
+                        gameObjective_group.add(gobj)
+    elif layer['name'] == 'UFO':
+            print('loading UFO...')
+            for x in range(data['width']):
+                for y in range(data['height']):
+                    if layer['data'][x + y * data['width']] != 0:
+                        ufo = Level1UFO(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),world)
+                        ufo_group.add(ufo)
+            for props in layer['properties']:
+                if props['name'] == 'fuelCap':
+                    ufo.fuelCap = float(props['value'])
+                elif props['name'] == 'fuelLevel':
+                    ufo.fuelLevel = float(props['value'])
+                elif props['name'] == 'fuelEfficency':
+                    ufo.fuelEfficency = float(props['value'])
+                elif props['name'] == 'enginForce':
+                    ufo.enginForce = float(props['value'])
+                elif props['name'] == 'mass':
+                    ufo.mass = float(props['value'])
+                elif props['name'] == 'liftingEnginCount':
+                    ufo.liftingEnginCount = int(props['value'])
+                elif props['name'] == 'HorizontalAirFrictionMultiplier':
+                    ufo.HorizontalAirFrictionMultiplier = float(props['value'])
+                elif props['name'] == 'VerticalAirFrictionMultiplier':
+                    ufo.VerticalAirFrictionMultiplier = float(props['value'])
+                elif props['name'] == 'e':
+                    ufo.e = float(props['value'])
+
 
 background = Background(layerData['BaseLayer']['x'],layerData['BaseLayer']['y'],layerData['BaseLayer']['data'])
+safeobs = Background(layerData['Non_Interactive_obstacles']['x'],layerData['Non_Interactive_obstacles']['y'],layerData['Non_Interactive_obstacles']['data'])
+
 background_group.add(background)
+background_group.add(safeobs)
 print('background loaded')
 
         
@@ -365,44 +457,32 @@ del(tiles)
 
 
 
-world = World()
-ufo = Level1UFO(400,500,world)
+
 scoreLabmda = lambda: 'Chips: {}'.format(coinsValue)
 fuelLambda = lambda: 'Fuel: {:.7}/{:.5}'.format(ufo.fuelLevel,ufo.fuelCap)
 score = TextMsg(5,0,scoreLabmda,WHITE)
 fuel = TextMsg(5,28,fuelLambda,WHITE)
 bullet = Bullet(0,0)
-obs1 = obstacle(100,100,OBSTACLE,0.1)
-obs2 = obstacle(400,600,OBSTACLE,0.8)
-fuelcan1 = FuelCan(550,500,FUEL_CAN,5.0)
-coin = Coins(200,200,COIN,1)
-gameObjective = GameObjective(900,400,GAME_OBJECTIVE)
 
 
 
 bullet_group.add(bullet)
-ufo_group.add(ufo)
 text_group.add(score)
 text_group.add(fuel)
-obstacle_group.add(obs1)
-obstacle_group.add(obs2)
-fuel_can_group.add(fuelcan1)
-coins_group.add(coin)
-gameObjective_group.add(gameObjective)
 
 color = RED
 
 def keepInCamBounds(allObjects):
     global current_offset
-    if ufo.x <= CAM_BOX.left:
-        print('ufo going left',allObjects)
+    if ufo.x <= CAM_BOX.left and  current_offset <= MAX_OFFSET:
+        print('ufo going left',current_offset)
         current_offset += CAM_BOX.left - ufo.x
         for obj_grp in allObjects:
             for obj in obj_grp:
                 obj.x += CAM_BOX.left - ufo.x
                 obj.update()
-    elif ufo.x >= CAM_BOX.right:
-        print('ufo going right')
+    elif ufo.x >= CAM_BOX.right and current_offset >= MIN_OFFSET:
+        print('ufo going right',current_offset)
         current_offset -= ufo.x - CAM_BOX.right
         for obj_grp in allObjects:
             for obj in obj_grp:
