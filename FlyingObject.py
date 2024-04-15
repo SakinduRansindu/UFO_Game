@@ -1,6 +1,8 @@
 import pygame
 from utils import *
 from colors import *
+from loadLevels import *
+import json
 
 ########################################
 ####        Global Consts           ####
@@ -14,7 +16,7 @@ pygame.init()
 
 WIN = pygame.display.set_mode((WIDTH,HEIGHT))
 BACKGROUND = scale_image(pygame.image.load("imgs/lava.png"),1.5)
-UFO = scale_image(pygame.image.load("imgs/FlyingObject.png"),0.03)
+UFO = scale_image(pygame.image.load("imgs/UFO.png"),0.8)
 OBSTACLE = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.2)
 FUEL_CAN = scale_image(pygame.image.load("imgs/fuel.png"),0.05)
 COIN = scale_image(pygame.image.load("imgs/chip.png"),0.4)
@@ -22,6 +24,13 @@ GAME_OBJECTIVE = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.1)
 GAME_FONT = pygame.font.SysFont("Cambria", 25)
 OFFSET = 600
 CAM_BOX = pygame.Rect(100,0,WIDTH - OFFSET,HEIGHT)
+
+
+# load level data 
+
+json_data = open('levels/level1.tmj').read()
+data = json.loads(json_data)
+del(json_data)
 
 
 ########################################
@@ -313,6 +322,49 @@ class Background(pygame.sprite.Sprite):
         self.rect.topleft = (self.x,self.y)
 
 
+
+# load layers 
+tiles = TileSetContainer()
+for tileset in data['tilesets']:
+    print('loading ',tileset['image'])
+    tmp = TileSet(tileset['name'], pygame.image.load(tileset['image']).convert_alpha(), tileset['firstgid'], tiles, tileset['tilewidth'], tileset['tileheight'], tileset['imagewidth'], tileset['imageheight'])
+    del(tmp)
+    
+# print(allTiles)
+layerData = {}
+
+bullet_group = pygame.sprite.Group()
+ufo_group = pygame.sprite.Group()
+text_group = pygame.sprite.Group()
+obstacle_group = pygame.sprite.Group()
+fuel_can_group = pygame.sprite.Group()
+coins_group = pygame.sprite.Group()
+gameObjective_group = pygame.sprite.Group()
+background_group = pygame.sprite.Group()
+
+for layer in data['layers']:
+    if layer['name'] == 'BaseLayer':
+        print('loading base layer')
+        l = pygame.Surface((data['width'] * 32, data['height'] * 32))
+        l.set_colorkey((0,0,0))
+        for x in range(data['width']):
+            for y in range(data['height']):
+                print('loading...',layer['data'][x + y * data['width']])
+                tile = tiles.getTile(layer['data'][x + y * data['width']])
+                l.blit(tile, (x * 32, y * 32))
+                layerData[layer['name']]={ 'data': l, 'x': layer['x'], 'y': layer['y']}
+
+background = Background(layerData['BaseLayer']['x'],layerData['BaseLayer']['y'],layerData['BaseLayer']['data'])
+background_group.add(background)
+print('background loaded')
+
+        
+del(tiles)
+
+
+
+
+
 world = World()
 ufo = Level1UFO(400,500,world)
 scoreLabmda = lambda: 'Chips: {}'.format(coinsValue)
@@ -325,16 +377,8 @@ obs2 = obstacle(400,600,OBSTACLE,0.8)
 fuelcan1 = FuelCan(550,500,FUEL_CAN,5.0)
 coin = Coins(200,200,COIN,1)
 gameObjective = GameObjective(900,400,GAME_OBJECTIVE)
-background = Background(0,0,BACKGROUND)
 
-bullet_group = pygame.sprite.Group()
-ufo_group = pygame.sprite.Group()
-text_group = pygame.sprite.Group()
-obstacle_group = pygame.sprite.Group()
-fuel_can_group = pygame.sprite.Group()
-coins_group = pygame.sprite.Group()
-gameObjective_group = pygame.sprite.Group()
-background_group = pygame.sprite.Group()
+
 
 bullet_group.add(bullet)
 ufo_group.add(ufo)
@@ -345,7 +389,6 @@ obstacle_group.add(obs2)
 fuel_can_group.add(fuelcan1)
 coins_group.add(coin)
 gameObjective_group.add(gameObjective)
-background_group.add(background)
 
 color = RED
 
