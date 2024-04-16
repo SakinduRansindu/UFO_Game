@@ -3,6 +3,7 @@ from utils import *
 from colors import *
 from loadLevels import *
 import json
+import os
 
 ########################################
 ####        Global Consts           ####
@@ -10,31 +11,37 @@ import json
 WIDTH,HEIGHT = 1200,800
 FPS = 32
 TILES_RES = 64
-
 MIN_SPEED = 3.5
 
 pygame.init()
 
 WIN = pygame.display.set_mode((WIDTH,HEIGHT))
-BACKGROUND = scale_image(pygame.image.load("imgs/lava.png"),1.5)
-UFO = scale_image(pygame.image.load("imgs/UFO.png"),0.8)
-OBSTACLE = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.2)
-FUEL_CAN = scale_image(pygame.image.load("imgs/fuel.png"),0.7)
-COIN = scale_image(pygame.image.load("imgs/chip.png"),0.4)
-GAME_OBJECTIVE = scale_image(pygame.image.load("imgs/MetalObstacle.png"),0.1)
 GAME_FONT = pygame.font.SysFont("Cambria", 25)
-OFFSET = 600
-CAM_BOX = pygame.Rect(100,0,WIDTH - OFFSET,HEIGHT)
+PADDING = 600
+CAM_BOX = pygame.Rect(100,0,WIDTH - PADDING,HEIGHT)
 MAX_OFFSET = 0
 MIN_OFFSET = -232
 
 
 # load level data 
+def loadLevelData(levelFile):
+    json_data = open('levels/'+levelFile).read()
+    data = json.loads(json_data)
+    del(json_data)
+    return data
 
-json_data = open('levels/level3.tmj').read()
-data = json.loads(json_data)
-del(json_data)
+def loadUserData():
+    if not os.path.exists('userData.dat'):
+        with open('userData.dat','w') as f:
+            f.write('{"coins":0,"currentLevel":1}')
+    json_data = open('userData.dat').read()
+    data = json.loads(json_data)
+    del(json_data)
+    return data
 
+def saveUserData(coins,currentLevel):
+    with open('userData.dat','w') as f:
+        f.write(json.dumps({'coins':coins,'currentLevel':currentLevel}))
 
 ########################################
 ####        Global Variables        ####
@@ -46,19 +53,30 @@ coinsValue = 0
 current_offset = 0
 
 class TextMsg(pygame.sprite.Sprite):
-    def __init__(self,x,y,getText,color):
+    def __init__(self,x,y,getText,color,text=None):
         pygame.sprite.Sprite.__init__(self)
         self.x = x
         self.y = y
         self.color = color
         self.getText = getText
-        self.image = GAME_FONT.render(self.getText(), 1, color)
+        self.text = text
+        if self.text:
+            self.image = GAME_FONT.render(self.text,1,color)
+        else:
+            self.image = GAME_FONT.render(self.getText(), 1, color)
         self.rect = self.image.get_rect()
         self.rect.topleft = (self.x,self.y)
         # objects.append(self)
     
     def update(self):
-        self.image = GAME_FONT.render(self.getText(),1,self.color)
+        if self.text:
+            self.image = GAME_FONT.render(self.text,1,self.color)
+        else:
+            self.image = GAME_FONT.render(self.getText(),1,self.color)
+
+    def setColor(self,color):
+        self.color = color
+        self.update()
 
 class World:
     gravity = 9.8
@@ -326,17 +344,6 @@ class Background(pygame.sprite.Sprite):
         self.rect.topleft = (self.x,self.y)
 
 
-
-# load layers 
-tiles = TileSetContainer()
-for tileset in data['tilesets']:
-    print('loading ',tileset['image'])
-    tmp = TileSet(tileset['name'], pygame.image.load(tileset['image']).convert_alpha(), tileset['firstgid'], tiles, tileset['tilewidth'], tileset['tileheight'], tileset['imagewidth'], tileset['imageheight'])
-    del(tmp)
-    
-# print(allTiles)
-layerData = {}
-
 bullet_group = pygame.sprite.Group()
 ufo_group = pygame.sprite.Group()
 text_group = pygame.sprite.Group()
@@ -346,131 +353,138 @@ coins_group = pygame.sprite.Group()
 gameObjective_group = pygame.sprite.Group()
 background_group = pygame.sprite.Group()
 
+ufo = None
+inGame = False
 
-world = World()
-
-mapProp = data['layers'][0]['properties']
-for prop in mapProp:
-    if prop['name'] == 'gravity':
-        world.gravity = prop['value']
-    elif prop['name'] == 'airFriction':
-        world.airFriction = prop['value']
-    elif prop['name'] == 'xMultiplier':
-        world.xMultiplier = prop['value']
-    elif prop['name'] == 'yMultiplier':
-        world.yMultiplier = prop['value']
-    elif prop['name'] == 'offset_min':
-        MIN_OFFSET = prop['value']
-    elif prop['name'] == 'offset_max':
-        MAX_OFFSET = prop['value']
-
-for layer in data['layers']:
-    if layer['name'] == 'BaseLayer' or layer['name'] == 'Non_Interactive_obstacles':
-        print('loading background...')
-        l = pygame.Surface((data['width'] * TILES_RES, data['height'] * TILES_RES))
-        l.set_colorkey((0,0,0))
-        for x in range(data['width']):
-            for y in range(data['height']):
-                print('loading...',layer['data'][x + y * data['width']])
-                tile = tiles.getTile(layer['data'][x + y * data['width']])
-                l.blit(tile, (x * TILES_RES, y * TILES_RES))
-        layerData[layer['name']]={ 'data': l, 'x': layer['x'], 'y': layer['y']}
-    elif layer['name'] == 'Interactive_obstacles':
-        print('loading obstacles...')
-        eVal = 0.8
-        for prop in layer['properties']:
-            if prop['name'] == 'e':
-                eVal = float(prop['value'])
-        for x in range(data['width']):
-            for y in range(data['height']):
-                if layer['data'][x + y * data['width']] != 0:
-                    obs = obstacle(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),eVal)
-                    obstacle_group.add(obs)
-    elif layer['name'] == 'Fuel':
-            print('loading fuel...')
-            fuelLevels = 0.5
-            for prop in layer['properties']:
-                if prop['name'] == 'fuelLevel':
-                    fuelLevels = float(prop['value'])
-            for x in range(data['width']):
-                for y in range(data['height']):
-                    if layer['data'][x + y * data['width']] != 0:
-                        fuel = FuelCan(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),fuelLevels)
-                        fuel_can_group.add(fuel)
-    elif layer['name'] == 'Coin':
-            print('loading coins...')
-            cVal = 1
-            for prop in layer['properties']:
-                if prop['name'] == 'value':
-                    cVal = int(prop['value'])
-            for x in range(data['width']):
-                for y in range(data['height']):
-                    if layer['data'][x + y * data['width']] != 0:
-                        coin = Coins(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),cVal)
-                        coins_group.add(coin)
-    elif layer['name'] == 'Game_Objective':
-            print('loading game objective...')
-            for x in range(data['width']):
-                for y in range(data['height']):
-                    if layer['data'][x + y * data['width']] != 0:
-                        gobj = GameObjective(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]))
-                        gameObjective_group.add(gobj)
-    elif layer['name'] == 'UFO':
-            print('loading UFO...')
-            for x in range(data['width']):
-                for y in range(data['height']):
-                    if layer['data'][x + y * data['width']] != 0:
-                        ufo = Level1UFO(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),world)
-                        ufo_group.add(ufo)
-            for props in layer['properties']:
-                if props['name'] == 'fuelCap':
-                    ufo.fuelCap = float(props['value'])
-                elif props['name'] == 'fuelLevel':
-                    ufo.fuelLevel = float(props['value'])
-                elif props['name'] == 'fuelEfficency':
-                    ufo.fuelEfficency = float(props['value'])
-                elif props['name'] == 'enginForce':
-                    ufo.enginForce = float(props['value'])
-                elif props['name'] == 'mass':
-                    ufo.mass = float(props['value'])
-                elif props['name'] == 'liftingEnginCount':
-                    ufo.liftingEnginCount = int(props['value'])
-                elif props['name'] == 'HorizontalAirFrictionMultiplier':
-                    ufo.HorizontalAirFrictionMultiplier = float(props['value'])
-                elif props['name'] == 'VerticalAirFrictionMultiplier':
-                    ufo.VerticalAirFrictionMultiplier = float(props['value'])
-                elif props['name'] == 'e':
-                    ufo.e = float(props['value'])
-
-
-background = Background(layerData['BaseLayer']['x'],layerData['BaseLayer']['y'],layerData['BaseLayer']['data'])
-safeobs = Background(layerData['Non_Interactive_obstacles']['x'],layerData['Non_Interactive_obstacles']['y'],layerData['Non_Interactive_obstacles']['data'])
-
-background_group.add(background)
-background_group.add(safeobs)
-print('background loaded')
-
+def startLevel(currentLevel,coinsValue):
+    # load layers 
+    data = loadLevelData('level{}.tmj'.format(currentLevel))
+    tiles = TileSetContainer()
+    for tileset in data['tilesets']:
+        print('loading ',tileset['image'])
+        tmp = TileSet(tileset['name'], pygame.image.load(tileset['image']).convert_alpha(), tileset['firstgid'], tiles, tileset['tilewidth'], tileset['tileheight'], tileset['imagewidth'], tileset['imageheight'])
+        del(tmp)
         
-del(tiles)
+    # print(allTiles)
+    layerData = {}
+
+    world = World()
+    mapProp = data['layers'][0]['properties']
+    for prop in mapProp:
+        if prop['name'] == 'gravity':
+            world.gravity = prop['value']
+        elif prop['name'] == 'airFriction':
+            world.airFriction = prop['value']
+        elif prop['name'] == 'xMultiplier':
+            world.xMultiplier = prop['value']
+        elif prop['name'] == 'yMultiplier':
+            world.yMultiplier = prop['value']
+        elif prop['name'] == 'offset_min':
+            MIN_OFFSET = prop['value']
+        elif prop['name'] == 'offset_max':
+            MAX_OFFSET = prop['value']
+
+    for layer in data['layers']:
+        if layer['name'] == 'BaseLayer' or layer['name'] == 'Non_Interactive_obstacles':
+            print('loading background...')
+            l = pygame.Surface((data['width'] * TILES_RES, data['height'] * TILES_RES))
+            l.set_colorkey((0,0,0))
+            for x in range(data['width']):
+                for y in range(data['height']):
+                    print('loading...',layer['data'][x + y * data['width']])
+                    tile = tiles.getTile(layer['data'][x + y * data['width']])
+                    l.blit(tile, (x * TILES_RES, y * TILES_RES))
+            layerData[layer['name']]={ 'data': l, 'x': layer['x'], 'y': layer['y']}
+        elif layer['name'] == 'Interactive_obstacles':
+            print('loading obstacles...')
+            eVal = 0.8
+            for prop in layer['properties']:
+                if prop['name'] == 'e':
+                    eVal = float(prop['value'])
+            for x in range(data['width']):
+                for y in range(data['height']):
+                    if layer['data'][x + y * data['width']] != 0:
+                        obs = obstacle(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),eVal)
+                        obstacle_group.add(obs)
+        elif layer['name'] == 'Fuel':
+                print('loading fuel...')
+                fuelLevels = 0.5
+                for prop in layer['properties']:
+                    if prop['name'] == 'fuelLevel':
+                        fuelLevels = float(prop['value'])
+                for x in range(data['width']):
+                    for y in range(data['height']):
+                        if layer['data'][x + y * data['width']] != 0:
+                            fuel = FuelCan(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),fuelLevels)
+                            fuel_can_group.add(fuel)
+        elif layer['name'] == 'Coin':
+                print('loading coins...')
+                cVal = 1
+                for prop in layer['properties']:
+                    if prop['name'] == 'value':
+                        cVal = int(prop['value'])
+                for x in range(data['width']):
+                    for y in range(data['height']):
+                        if layer['data'][x + y * data['width']] != 0:
+                            coin = Coins(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),cVal)
+                            coins_group.add(coin)
+        elif layer['name'] == 'Game_Objective':
+                print('loading game objective...')
+                for x in range(data['width']):
+                    for y in range(data['height']):
+                        if layer['data'][x + y * data['width']] != 0:
+                            gobj = GameObjective(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]))
+                            gameObjective_group.add(gobj)
+        elif layer['name'] == 'UFO':
+                print('loading UFO...')
+                for x in range(data['width']):
+                    for y in range(data['height']):
+                        if layer['data'][x + y * data['width']] != 0:
+                            ufo = Level1UFO(x*TILES_RES,y*TILES_RES,tiles.getTile(layer['data'][x + y * data['width']]),world)
+                            ufo_group.add(ufo)
+                for props in layer['properties']:
+                    if props['name'] == 'fuelCap':
+                        ufo.fuelCap = float(props['value'])
+                    elif props['name'] == 'fuelLevel':
+                        ufo.fuelLevel = float(props['value'])
+                    elif props['name'] == 'fuelEfficency':
+                        ufo.fuelEfficency = float(props['value'])
+                    elif props['name'] == 'enginForce':
+                        ufo.enginForce = float(props['value'])
+                    elif props['name'] == 'mass':
+                        ufo.mass = float(props['value'])
+                    elif props['name'] == 'liftingEnginCount':
+                        ufo.liftingEnginCount = int(props['value'])
+                    elif props['name'] == 'HorizontalAirFrictionMultiplier':
+                        ufo.HorizontalAirFrictionMultiplier = float(props['value'])
+                    elif props['name'] == 'VerticalAirFrictionMultiplier':
+                        ufo.VerticalAirFrictionMultiplier = float(props['value'])
+                    elif props['name'] == 'e':
+                        ufo.e = float(props['value'])
+
+
+    background = Background(layerData['BaseLayer']['x'],layerData['BaseLayer']['y'],layerData['BaseLayer']['data'])
+    safeobs = Background(layerData['Non_Interactive_obstacles']['x'],layerData['Non_Interactive_obstacles']['y'],layerData['Non_Interactive_obstacles']['data'])
+
+    background_group.add(background)
+    background_group.add(safeobs)
+    del(tiles)
+
+
+    scoreLabmda = lambda: 'Chips: {}'.format(coinsValue)
+    fuelLambda = lambda: 'Fuel: {:.7}/{:.5}'.format(ufo.fuelLevel,ufo.fuelCap)
+    score = TextMsg(5,0,scoreLabmda,WHITE)
+    fuel = TextMsg(5,28,fuelLambda,WHITE)
+    bullet = Bullet(0,0)
 
 
 
+    bullet_group.add(bullet)
+    text_group.add(score)
+    text_group.add(fuel)
+    return ufo
 
 
-
-scoreLabmda = lambda: 'Chips: {}'.format(coinsValue)
-fuelLambda = lambda: 'Fuel: {:.7}/{:.5}'.format(ufo.fuelLevel,ufo.fuelCap)
-score = TextMsg(5,0,scoreLabmda,WHITE)
-fuel = TextMsg(5,28,fuelLambda,WHITE)
-bullet = Bullet(0,0)
-
-
-
-bullet_group.add(bullet)
-text_group.add(score)
-text_group.add(fuel)
-
-color = RED
 
 def keepInCamBounds(allObjects):
     global current_offset
@@ -489,9 +503,8 @@ def keepInCamBounds(allObjects):
                 obj.x -= ufo.x - CAM_BOX.right
                 obj.update()
 
-def draw(win):
+def drawGame():
     WIN.fill(DARK_TEAL)
-
     if pygame.sprite.spritecollide(ufo,obstacle_group,False):
         colisions = pygame.sprite.spritecollide(ufo,obstacle_group,False,pygame.sprite.collide_mask)
         if colisions:
@@ -512,14 +525,12 @@ def draw(win):
     gameObjectiveColisions = pygame.sprite.spritecollide(ufo,gameObjective_group,True)
     if gameObjectiveColisions:
         print('You Win')
-        global run
-        run = False
+        global inGame
+        inGame = False
         
-    
-    
     keepInCamBounds([obstacle_group,fuel_can_group,coins_group,gameObjective_group,background_group,ufo_group])
     
-    bullet_group.update(color)
+    bullet_group.update(RED)
     ufo_group.update()
     text_group.update()
 
@@ -532,22 +543,7 @@ def draw(win):
     text_group.draw(WIN)
     bullet_group.draw(WIN)
 
-    pygame.draw.rect(WIN,PURPLE,CAM_BOX,2)
-
-    pygame.display.update()
-
-run = True
-while run:
-    clock.tick(FPS)
-    pygame.mouse.set_visible(False)
-    draw(WIN)
-
-
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            run=False
-            break
-
+    # pygame.draw.rect(WIN,PURPLE,CAM_BOX,2)
     keys = pygame.key.get_pressed()
     
     linearMovementX = False
@@ -569,8 +565,224 @@ while run:
     if not linearMovementY:
         ufo.burnLinearInertiaY()
 
+def startLevel_menu(level):
+    global coinsValue
+    global ufo
+    global inGame
+    ufo = startLevel(level,coinsValue)
+    inGame = True
+
+menuOBJ = {
+    0: {
+        'text': 'Start Game',
+        'isDisable':False,
+        'subMenu': None,
+        'cmd':None
+    },
+    1: {
+        'text': 'Levels',
+        'isDisable':False,
+        'subMenu': {
+            0: {
+                'text': 'Level 1',
+                'isDisable':False,
+                'subMenu': None,
+                'cmd':lambda:startLevel_menu(3)
+            },
+            1: {
+                'text': 'Level 2',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+            },
+            2: {
+                'text': 'Level 3',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+            3: {
+                'text': 'Level 4',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+            4: {
+                'text': 'Level 5',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+            5: {
+                'text': 'Level 6',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+            6: {
+                'text': 'Level 7',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+        }
+    },
+    2: {
+        'text': 'Exit',
+        'isDisable':False,
+        'subMenu': None,
+        'cmd':lambda:quit()
+    }
+}
+
+class Menu:
+    def __init__(self,menuObj):
+        self.menuObj = menuObj
+        self.selectedIndex = 0
+        self.menuItems_group = pygame.sprite.Group()
+        self.hasMore = False
+        self.currentObj = self.menuObj
+        self.previousObj = []
+        self.prepareMenuItems()
+        self.hilightSelected()
+        self.offset = 0
+        self.isDisable = False
+
+    def getMenuItemGroup(self):
+        tmp = pygame.sprite.Group(self.menuItems_group)
+        backCol = GREEN
+        selectCol = GREEN
+        if len(self.previousObj)==0:
+            backCol = GRAY
+        if self.isDisable:
+            selectCol = GRAY
+
+        tmp.add(TextMsg(WIDTH//2 - 250,HEIGHT//2 + 150,None,backCol,'Back (BackSpace)'))
+        tmp.add(TextMsg(WIDTH//2 + 50 ,HEIGHT//2 + 150,None,selectCol,'Select (Enter)'))
+        return tmp
+
+
+    def prepareMenuItems(self):
+        self.menuItems_group.empty()
+        if self.selectedIndex>4:
+            self.offset = self.selectedIndex - 4
+        else:
+            self.offset = 0
+        for i in range(min(5,len(self.currentObj))):
+            self.menuItems_group.add(TextMsg(WIDTH//2 - 100,HEIGHT//2 -100 +i*50,None,WHITE,self.currentObj[i+self.offset]['text']))
+        if len(self.currentObj) > 5:
+            self.hasMore = True
+        else:
+            self.hasMore = False  
+
+    def up(self):
+        if self.selectedIndex > 0:
+            self.selectedIndex -= 1
+        else:
+            self.selectedIndex = len(self.currentObj)-1
+        self.prepareMenuItems()
+        self.hilightSelected()
         
+    
+    def down(self):
+        if self.selectedIndex < len(self.currentObj)-1:
+            self.selectedIndex += 1
+        else:
+            self.selectedIndex = 0
+        self.prepareMenuItems()
+        self.hilightSelected()
+
+    def select(self):
+        sm =  self.currentObj[self.selectedIndex]
+        if sm['subMenu']:
+            self.previousObj.append(self.currentObj)
+            self.currentObj = sm['subMenu']
+            self.selectedIndex = 0
+            self.prepareMenuItems()
+            self.hilightSelected()
+        elif sm['cmd']:
+            sm['cmd']()
+        else:
+            print('nothing to execute')
+    
+    def back(self):
+        if len(self.previousObj)>0:
+            self.currentObj =self.previousObj.pop()
+            self.selectedIndex = 0
+            self.offset = 0
+            self.prepareMenuItems()
+            self.hilightSelected()
 
 
+    def hilightSelected(self):
+        for i in range(len(self.menuItems_group)):
+            if i+self.offset == self.selectedIndex:
+                self.menuItems_group.sprites()[i].setColor(RED)
+                if self.currentObj[self.offset+i]['isDisable']:
+                    self.isDisable = True
+                else:
+                    self.isDisable = False
+            else:
+                self.menuItems_group.sprites()[i].setColor(WHITE)
+
+menu = Menu(menuOBJ)
+
+pressedAndReleased = True
+def drawMenu():
+    global pressedAndReleased
+    WIN.fill(DARK_TEAL)
+    keys = pygame.key.get_pressed()
+    if keys[pygame.K_DOWN]:
+        if pressedAndReleased:
+            # code to move down
+            menu.down()
+            #
+            pressedAndReleased = False
+    elif keys[pygame.K_UP]:
+        if pressedAndReleased:
+            # code to move up
+            menu.up()
+            #
+            pressedAndReleased = False
+    elif keys[pygame.K_RETURN]:
+        if pressedAndReleased:
+            # code to select
+            menu.select()
+            #
+            pressedAndReleased = False
+    elif keys[pygame.K_BACKSPACE]:
+        if pressedAndReleased:
+            # code to select
+            menu.back()
+            #
+            pressedAndReleased = False
+    else:
+        pressedAndReleased = True
+
+    menu.getMenuItemGroup().draw(WIN)
+
+run = True
+pygame.mouse.set_visible(False)
+
+while run:
+    clock.tick(FPS)
+    if inGame:
+        drawGame()
+    else:
+        drawMenu()
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            run=False
+            break
+
+    pygame.display.update()
 
 pygame.quit()
+
+
