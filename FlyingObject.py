@@ -53,7 +53,7 @@ clock = pygame.time.Clock()
 coinsValue = 0
 current_offset = 0
 sounds = {
-    "coin":'coin.wav',
+    "grab":'grab.wav',
     "conflict":'conflict.wav',
     "conflict2":'conflict2.wav',
     "failing":'failing.wav',
@@ -61,20 +61,31 @@ sounds = {
     "splash":'splash.wav',
     "win":'win.wav',
     "refill":'refill.wav',
-    "engineStop":'engineStop.wav'
+    "engineStop":'engineStop.wav',
+    "engineWorking":'engineWorking.wav'
 }
 
 loadedSounds=dict()
 pygame.mixer.init()
-pygame.mixer.set_num_channels(5)
+pygame.mixer.set_num_channels(16)
 for key in sounds:
     print('loading',key)
     loadedSounds[key] = pygame.mixer.Sound('sounds/'+sounds[key])
 
-def playSound(sound_key,volume):
-    channel = pygame.mixer.find_channel(True)
-    channel.set_volume(volume)
-    channel.play(loadedSounds[sound_key])
+def playSound(sound_key,volume,loops=0,reserved=False):
+    if reserved:
+        pygame.mixer.set_reserved(1)
+        channel = pygame.mixer.Channel(0)
+        channel.play(loadedSounds[sound_key],loops=loops)
+        channel.set_volume(volume)
+        return channel
+    else:
+        channel = pygame.mixer.find_channel(True)
+        channel.set_volume(volume)
+        channel.play(loadedSounds[sound_key],loops=loops)
+        return channel
+
+
 
 playSound('splash',1)
 
@@ -116,7 +127,8 @@ class Banner(pygame.sprite.Sprite):
         self.rect.topleft = (self.x,self.y)
     
     def update(self):
-        self.image = GAME_FONT.render(self.text,1,self.color)
+        self.image = GAME_FONT_LARGE.render(self.text,1,self.color)
+        self.rect.topleft = (self.x,self.y)
 
 
 class World:
@@ -133,6 +145,9 @@ class AbstractUFO(pygame.sprite.Sprite):
     fuelLevel = 10.0
     fuelEfficency = 0.999
     enginForce = 1000.0
+    maxhealth = 1000.0
+    health = maxhealth
+    strength = 10.0
     acceleration = enginForce/mass
     liftingEnginCount = 1
     HorizontalAirFrictionMultiplier = 0.3
@@ -155,9 +170,15 @@ class AbstractUFO(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.topleft = (self.x,self.y)
         self.mask = pygame.mask.from_surface(self.image)
+        self.engineSound = playSound('engineWorking',0.2,-1,True)
+
 
     def update(self):
         self.rect.topleft = (self.x,self.y)
+
+    def destroyObj(self):
+        self.engineSound.stop()
+        pygame.mixer.set_reserved(0)
 
     def fuelRefill(self,fuelCan):
         newFuelLevel = 0.0
@@ -176,6 +197,42 @@ class AbstractUFO(pygame.sprite.Sprite):
                 # print(obs.rect.left,obs.rect.right,obs.rect.top,obs.rect.bottom,self.rect.left,self.rect.right,self.rect.top,self.rect.bottom)
                 # offset = max(self.rect.right - obs.rect.left,self.rect.bottom - obs.rect.top)/5
                 offset = max([self.speedX*5,self.speedY*5,10])
+                damage = 0
+                if self.speedX !=0 and self.speedY!=0:
+                    damage = abs(self.speedX * self.speedY)
+                elif self.speedX !=0:
+                    damage = abs(self.speedX)
+                elif self.speedY !=0:
+                    damage = abs(self.speedY)
+
+                if damage > self.strength:
+                    h = self.health - damage
+                    if h<0:
+                        self.destroyObj()
+                        self.health = 0.0
+                        bullet_group.empty()
+                        ufo_group.empty()
+                        text_group.empty()
+                        obstacle_group.empty()
+                        fuel_can_group.empty()
+                        coins_group.empty()
+                        gameObjective_group.empty()
+                        background_group.empty()
+                        banner_msg_group.empty()
+                        global inBanner
+                        global inGame
+                        print('You loss')
+                        playSound('failing',1)
+                        banner = Banner('DAMAGED SERIOUSLY',ORANGE)
+                        banner.x = WIDTH//2-200
+                        banner.update()
+                        banner_msg_group.add(banner)
+                        text_group.add(TextMsg(WIDTH//2-150,HEIGHT//2+50,None,GRAY,'(press enter key to continue.)'))
+                        inBanner = True
+                        inGame = False
+                    else:
+                        self.health = float(h)
+
                 # print('offset',offset)
                 self.prevPos = (self.x,self.y)
                 if obs.rect.bottom > self.rect.top and obs.rect.bottom < self.rect.top+offset:
@@ -183,7 +240,7 @@ class AbstractUFO(pygame.sprite.Sprite):
                     self.speedY = (self.speedY)*-1*((obs.e+self.e)/2)
                     self.y = self.prevPos[1]+1
                     self.isColidedTop = True
-                    playSound('conflict',1)
+                    playSound('conflict',offset/100.0)
                 elif obs.rect.top < self.rect.bottom and obs.rect.top > self.rect.bottom-offset:
                     # print('collision at top')
                     self.speedY = (self.speedY)*-1*((obs.e+self.e)/2)
@@ -194,21 +251,21 @@ class AbstractUFO(pygame.sprite.Sprite):
                     # self.y = obs.rect.top - self.img.get_height()
                     self.y = self.prevPos[1]
                     self.isColidedBottom = True
-                    playSound('conflict',1)
+                    playSound('conflict',offset/100.0)
                 if obs.rect.left < self.rect.right and obs.rect.left > self.rect.right-offset:
                     # print('collision at left')
                     self.speedX = (self.speedX)*-1*((obs.e+self.e)/2)
                     # self.x = obs.rect.left - self.img.get_width()
                     self.x = self.prevPos[0]-1
                     self.isColidedRight = True
-                    playSound('conflict2',1)
+                    playSound('conflict2',offset/100.0)
                 elif obs.rect.right > self.rect.left and obs.rect.right < self.rect.left+offset:
                     # print('collision at right')
                     self.speedX = (self.speedX)*-1*((obs.e+self.e)/2)
                     # self.x = obs.rect.right
                     self.x = self.prevPos[0]+1
                     self.isColidedLeft = True
-                    playSound('conflict2',1)
+                    playSound('conflict2',offset/100.0)
 
                 
         
@@ -251,6 +308,7 @@ class AbstractUFO(pygame.sprite.Sprite):
             self.fuelLevel = 0.0
             if not self.noFuel:
                 self.noFuel = True
+                self.engineSound.set_volume(0.0)
                 playSound('engineStop',1)
     
     def moveLeft(self):
@@ -260,6 +318,7 @@ class AbstractUFO(pygame.sprite.Sprite):
             # print('dx',dx)
             self.shiftXPosition(dx,dt)
             self.burnFuel()
+            self.engineSound.set_volume(0.6)
         else:
             self.burnLinearInertiaX()
 
@@ -270,8 +329,10 @@ class AbstractUFO(pygame.sprite.Sprite):
             # print('dx',dx)
             self.shiftXPosition(dx,dt)
             self.burnFuel()
+            self.engineSound.set_volume(0.6)
         else:
             self.burnLinearInertiaX()
+
 
     def moveUp(self):
         if self.fuelLevel>0 and not self.isColidedTop:
@@ -280,8 +341,10 @@ class AbstractUFO(pygame.sprite.Sprite):
             # print('dy',dy)
             self.shiftYPosition(dy,dt)
             self.burnFuel(self.liftingEnginCount)
+            self.engineSound.set_volume(0.8)
         else:
             self.burnLinearInertiaY()
+
 
 
     def burnLinearInertiaX(self):
@@ -294,6 +357,7 @@ class AbstractUFO(pygame.sprite.Sprite):
             self.shiftXPosition(dx,dt)
         else:
             self.speedX = 0.0
+        
         # print('burn',self.speedX)
 
     def burnLinearInertiaY(self):
@@ -305,7 +369,34 @@ class AbstractUFO(pygame.sprite.Sprite):
             elif self.speedY > 0.0:
                 dy = self.speedY * dt + (-1*abs(self.world.airFriction * self.VerticalAirFrictionMultiplier * self.speedY)-self.world.gravity)*(dt**2)
                 self.shiftYPosition(dy,dt)
+
+        if self.speedY == 0.0 and self.noFuel:
+            self.destroyObj()
+            bullet_group.empty()
+            ufo_group.empty()
+            text_group.empty()
+            obstacle_group.empty()
+            fuel_can_group.empty()
+            coins_group.empty()
+            gameObjective_group.empty()
+            background_group.empty()
+            banner_msg_group.empty()
+            global inBanner
+            global inGame
+            print('You loss')
+            playSound('failing',1)
+            banner = Banner('OUT OF FUEL',ORANGE)
+            banner.x = WIDTH//2 - 150
+            banner.update()
+            banner_msg_group.add(banner)
+            text_group.add(TextMsg(WIDTH//2-150,HEIGHT//2+50,None,GRAY,'(press enter key to continue.)'))
+            inBanner = True
+            inGame = False
+            
             # print('burnY',self.speedY)
+
+    def engineStandby(self):
+        self.engineSound.set_volume(0.2)
 
 class Bullet(pygame.sprite.Sprite):
     def __init__(self,x,y):
@@ -407,7 +498,7 @@ banner_msg_group = pygame.sprite.Group()
 
 ufo = None
 inGame = False
-
+inBanner = False
 def startLevel(currentLevel):
     # load layers 
     global coinsValue
@@ -533,8 +624,10 @@ def startLevel(currentLevel):
 
     scoreLabmda = lambda: 'Chips: {}'.format(coinsValue)
     fuelLambda = lambda: 'Fuel: {:.7}/{:.5}'.format(ufo.fuelLevel,ufo.fuelCap)
+    healthLambda = lambda: 'health: {:.7}/{:.5}'.format(ufo.health,ufo.maxhealth)
     score = TextMsg(5,0,scoreLabmda,WHITE)
     fuel = TextMsg(5,28,fuelLambda,WHITE)
+    health = TextMsg(5,56,healthLambda,WHITE)
     bullet = Bullet(0,0)
 
 
@@ -542,6 +635,7 @@ def startLevel(currentLevel):
     bullet_group.add(bullet)
     text_group.add(score)
     text_group.add(fuel)
+    text_group.add(health)
     return ufo
 
 def keepInCamBounds(allObjects):
@@ -563,6 +657,19 @@ def keepInCamBounds(allObjects):
                 obj.x -= ufo.x - CAM_BOX.right
                 obj.update()
 
+def drawBanner():
+    WIN.fill(DARK_TEAL)
+    banner_msg_group.draw(WIN)
+    text_group.draw(WIN)
+    bullet_group.draw(WIN)
+    keys = pygame.key.get_pressed()
+    if keys[pygame.K_RETURN]:
+        text_group.empty()
+        global inGame
+        global inBanner
+        inGame = False
+        inBanner = False
+
 def drawGame():
     WIN.fill(DARK_TEAL)
     if pygame.sprite.spritecollide(ufo,obstacle_group,False):
@@ -581,30 +688,11 @@ def drawGame():
         global coinsValue
         for c in coinsColisions:
             coinsValue += c.value
-        playSound('coin',1)
+        playSound('grab',1)
 
     gameObjectiveColisions = pygame.sprite.spritecollide(ufo,gameObjective_group,True)
     if gameObjectiveColisions:
-        print('You Win')
-        playSound('win',1)
-        banner_msg_group.add(Banner('YOU WIN',GOLD))
-        text_group.add(TextMsg(WIDTH//2-150,HEIGHT//2+50,None,GRAY,'(press enter key to continue.)'))
-        while True:
-            clock.tick(FPS)
-            banner_msg_group.draw(WIN)
-            text_group.draw(WIN)
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    global run
-                    run=False
-                    break
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_RETURN]:
-                break
-            pygame.display.update()
-        
-
-
+        ufo.destroyObj()
         bullet_group.empty()
         ufo_group.empty()
         text_group.empty()
@@ -614,10 +702,17 @@ def drawGame():
         gameObjective_group.empty()
         background_group.empty()
         banner_msg_group.empty()
-        # del(ufo)
-        
+        global inBanner
         global inGame
+        global menu
+        menu.reset()
         inGame = False
+        inBanner = True
+        print('You Win')
+        playSound('win',1)
+        banner_msg_group.add(Banner('YOU WIN',GOLD))
+        text_group.add(TextMsg(WIDTH//2-150,HEIGHT//2+50,None,GRAY,'(press enter key to continue.)'))
+
         
     keepInCamBounds([obstacle_group,fuel_can_group,coins_group,gameObjective_group,background_group,ufo_group])
     
@@ -632,7 +727,6 @@ def drawGame():
     coins_group.draw(WIN)
     gameObjective_group.draw(WIN)
     text_group.draw(WIN)
-    banner_msg_group.draw(WIN)
     bullet_group.draw(WIN)
 
     # pygame.draw.rect(WIN,PURPLE,CAM_BOX,2)
@@ -656,6 +750,8 @@ def drawGame():
         ufo.burnLinearInertiaX()
     if not linearMovementY:
         ufo.burnLinearInertiaY()
+    if not (linearMovementX or linearMovementY):
+        ufo.engineStandby()
 
 
 
@@ -748,7 +844,6 @@ class Menu:
             backCol = GRAY
         if self.isDisable:
             selectCol = GRAY
-
         tmp.add(TextMsg(WIDTH//2 - 250,HEIGHT//2 + 150,None,backCol,'Back (BackSpace)'))
         tmp.add(TextMsg(WIDTH//2 + 50 ,HEIGHT//2 + 150,None,selectCol,'Select (Enter)'))
         return tmp
@@ -795,7 +890,7 @@ class Menu:
             self.selectedIndex = 0
             self.prepareMenuItems()
             self.hilightSelected()
-            playSound('menuSelect',1)
+            playSound('grab',1)
         elif sm['cmd']:
             if sm['cmd'] == 'quit':
                 quit()
@@ -805,9 +900,7 @@ class Menu:
                 ufo = startLevel(int(sm['cmd'][5:]))
                 print(MAX_OFFSET,MIN_OFFSET)
                 inGame = True
-                playSound('splash',1)
-
-                
+                playSound('splash',1) 
         else:
             print('nothing to execute')
     
@@ -818,7 +911,7 @@ class Menu:
             self.offset = 0
             self.prepareMenuItems()
             self.hilightSelected()
-            playSound('menuSelect',1)
+            playSound('grab',1)
 
 
 
@@ -832,6 +925,13 @@ class Menu:
                     self.isDisable = False
             else:
                 self.menuItems_group.sprites()[i].setColor(WHITE)
+
+    def reset(self):
+        self.currentObj = self.menuObj
+        self.selectedIndex = 0
+        self.previousObj = []
+        self.prepareMenuItems()
+        self.hilightSelected()
 
 menu = Menu(menuOBJ)
 
@@ -876,6 +976,8 @@ while run:
     clock.tick(FPS)
     if inGame:
         drawGame()
+    elif inBanner:
+        drawBanner()
     else:
         drawMenu()
 
