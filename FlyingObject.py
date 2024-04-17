@@ -8,6 +8,7 @@ import math
 ########################################
 ####        Global Consts           ####
 ########################################
+# WIDTH,HEIGHT = 1080,920
 WIDTH,HEIGHT = 1200,800
 FPS = 32
 TILES_RES = 64
@@ -16,6 +17,8 @@ MIN_SPEED = 3.5
 pygame.init()
 
 WIN = pygame.display.set_mode((WIDTH,HEIGHT))
+# WIN = pygame.display.set_mode((0,0),pygame.FULLSCREEN)
+# WIDTH,HEIGHT = (WIN.get_width(),WIN.get_height())
 GAME_FONT = pygame.font.SysFont("Cambria", 25)
 GAME_FONT_LARGE = pygame.font.SysFont("Cambria", 55)
 PADDING = 600
@@ -90,7 +93,7 @@ menuOBJ = {
     }
 }
 
-level = 0
+level = 1
 
 # load level data 
 def loadLevelData(levelFile):
@@ -103,7 +106,7 @@ def loadUserData():
     global menuOBJ
     if not os.path.exists('userData.dat'):
         with open('userData.dat','w') as f:
-            f.write(json.dumps({'coins':0,'currentLevel':0,'levels':menuOBJ[1]['subMenu']}))
+            f.write(json.dumps({'coins':0,'currentLevel':1,'levels':menuOBJ[1]['subMenu']}))
     json_data = open('userData.dat').read()
     data = json.loads(json_data)
     for l in data['levels'].keys():
