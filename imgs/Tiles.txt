@@ -1,5 +1,3 @@
-ground tileset - https://misterzedman.itch.io/
 magma tileset - https://morlix.itch.io/magma-tileset-32x
-platformer tileset - https://oddpotatogift.itch.io/32x32-platformer
-space station - https://aske4.itch.io/free-space-station
-ground tileset(128) - https://opengameart.org/content/2d-platform-ground-stone-tiles
+Orb of Flame, Iceless - https://opengameart.org/content/shiny-orbs-64x64
+Tiles_64x64 - https://opengameart.org/content/platform-tileset-nature

@@ -1,9 +1,9 @@
 import pygame
-from utils import *
 from colors import *
 from loadLevels import *
 import json
 import os
+import math
 
 ########################################
 ####        Global Consts           ####
@@ -27,7 +27,7 @@ menuOBJ = {
         'text': 'Start Game',
         'isDisable':False,
         'subMenu': None,
-        'cmd':None
+        'cmd':'continue'
     },
     1: {
         'text': 'Levels',
@@ -37,47 +37,47 @@ menuOBJ = {
                 'text': 'Level 1',
                 'isDisable':False,
                 'subMenu': None,
-                'cmd':'level3'
+                'cmd':'level1'
             },
             1: {
                 'text': 'Level 2',
                 'isDisable':True,
                 'subMenu': None,
-                'cmd':None
+                'cmd':'level2'
             },
             2: {
                 'text': 'Level 3',
                 'isDisable':True,
                 'subMenu': None,
-                'cmd':None
+                'cmd':'level3'
 
             },
             3: {
                 'text': 'Level 4',
                 'isDisable':True,
                 'subMenu': None,
-                'cmd':None
+                'cmd':'level4'
 
             },
             4: {
                 'text': 'Level 5',
                 'isDisable':True,
                 'subMenu': None,
-                'cmd':None
+                'cmd':'level5'
 
             },
             5: {
                 'text': 'Level 6',
                 'isDisable':True,
                 'subMenu': None,
-                'cmd':None
+                'cmd':'level6'
 
             },
             6: {
                 'text': 'Level 7',
                 'isDisable':True,
                 'subMenu': None,
-                'cmd':None
+                'cmd':'level7'
 
             },
         }
@@ -101,7 +101,6 @@ def loadLevelData(levelFile):
 
 def loadUserData():
     global menuOBJ
-    print('befor',menuOBJ)
     if not os.path.exists('userData.dat'):
         with open('userData.dat','w') as f:
             f.write(json.dumps({'coins':0,'currentLevel':0,'levels':menuOBJ[1]['subMenu']}))
@@ -117,16 +116,19 @@ def loadUserData():
         if data['levels'][l]['isDisable']:
             level = int(l)
             break
-    print('after',menuOBJ)
 
 def unlockNextLevel():
     global menuOBJ
     global level
+    i =0
     for l in menuOBJ[1]['subMenu']:
         if menuOBJ[1]['subMenu'][l]['isDisable']:
+            if i>level:
+                break
             level = int(l)
             menuOBJ[1]['subMenu'][l]['isDisable'] = False
             break
+        i+=1
     saveUserData()
 
 
@@ -165,7 +167,7 @@ loadedSounds=dict()
 pygame.mixer.init()
 pygame.mixer.set_num_channels(16)
 for key in sounds:
-    print('loading',key)
+    print('loading sound file ',key)
     loadedSounds[key] = pygame.mixer.Sound('sounds/'+sounds[key])
 
 def playSound(sound_key,volume,loops=0,reserved=False):
@@ -199,7 +201,6 @@ class TextMsg(pygame.sprite.Sprite):
             self.image = GAME_FONT.render(self.getText(), 1, color)
         self.rect = self.image.get_rect()
         self.rect.topleft = (self.x,self.y)
-        # objects.append(self)
     
     def update(self):
         if self.text:
@@ -288,22 +289,20 @@ class AbstractUFO(pygame.sprite.Sprite):
         playSound('refill',1)
         
     def collide(self,colisions):
-        if not (self.isColidedTop or self.isColidedBottom or self.isColidedLeft or self.isColidedRight):
-            for obs in colisions:
-                # print(obs.rect.left,obs.rect.right,obs.rect.top,obs.rect.bottom,self.rect.left,self.rect.right,self.rect.top,self.rect.bottom)
-                # offset = max(self.rect.right - obs.rect.left,self.rect.bottom - obs.rect.top)/5
-                offset = max([self.speedX*5,self.speedY*5,10])
+        for obs in colisions:
+            offset = max([self.speedX*5,self.speedY*5,10])
+            if not(self.isColidedBottom or self.isColidedTop or self.isColidedLeft or self.isColidedRight):
                 damage = 0
                 if self.speedX !=0 and self.speedY!=0:
-                    damage = abs(self.speedX * self.speedY)
+                    damage = math.sqrt((self.speedX**2) + (self.speedY**2))*self.mass
                 elif self.speedX !=0:
-                    damage = abs(self.speedX)
+                    damage = abs(self.speedX)*self.mass
                 elif self.speedY !=0:
-                    damage = abs(self.speedY)
+                    damage = abs(self.speedY)*self.mass
 
-                if damage > self.strength:
-                    h = self.health - damage
-                    if h<0:
+                if damage > self.maxhealth/10:
+                    h = self.health - (damage*0.1/self.strength)
+                    if h<=0:
                         self.destroyObj()
                         self.health = 0.0
                         bullet_group.empty()
@@ -330,39 +329,55 @@ class AbstractUFO(pygame.sprite.Sprite):
                     else:
                         self.health = float(h)
 
-                # print('offset',offset)
+            if obs.rect.bottom > self.rect.top and obs.rect.bottom < self.rect.top+offset and not self.isColidedTop:
+                # print('collision at bottom')
+                self.speedY = (self.speedY)*-1*((obs.e+self.e)/2)
+                self.y = self.prevPos[1]+1
+                self.isColidedTop = True
+                playSound('conflict',offset/100.0)
+            elif obs.rect.top < self.rect.bottom and obs.rect.top > self.rect.bottom-offset and not self.isColidedBottom:
+                # print('collision at top')
+                self.speedY = (self.speedY)*-1*((obs.e+self.e)/2)
+                if self.speedY < 1.5:
+                    self.speedY = 0.0
+                # self.y = obs.rect.top - self.img.get_height()
+                self.y = self.prevPos[1]
+                self.isColidedBottom = True
+                playSound('conflict',offset/100.0)
                 self.prevPos = (self.x,self.y)
-                if obs.rect.bottom > self.rect.top and obs.rect.bottom < self.rect.top+offset:
-                    # print('collision at bottom')
-                    self.speedY = (self.speedY)*-1*((obs.e+self.e)/2)
-                    self.y = self.prevPos[1]+1
-                    self.isColidedTop = True
-                    playSound('conflict',offset/100.0)
-                elif obs.rect.top < self.rect.bottom and obs.rect.top > self.rect.bottom-offset:
-                    # print('collision at top')
-                    self.speedY = (self.speedY)*-1*((obs.e+self.e)/2)
-                    # print('speedY',self.speedY)
-                    if self.speedY < 1.5:
-                        # print('speedY set to 0')
-                        self.speedY = 0.0
-                    # self.y = obs.rect.top - self.img.get_height()
-                    self.y = self.prevPos[1]
-                    self.isColidedBottom = True
-                    playSound('conflict',offset/100.0)
-                if obs.rect.left < self.rect.right and obs.rect.left > self.rect.right-offset:
-                    # print('collision at left')
-                    self.speedX = (self.speedX)*-1*((obs.e+self.e)/2)
-                    # self.x = obs.rect.left - self.img.get_width()
-                    self.x = self.prevPos[0]-1
-                    self.isColidedRight = True
-                    playSound('conflict2',offset/100.0)
-                elif obs.rect.right > self.rect.left and obs.rect.right < self.rect.left+offset:
-                    # print('collision at right')
-                    self.speedX = (self.speedX)*-1*((obs.e+self.e)/2)
-                    # self.x = obs.rect.right
-                    self.x = self.prevPos[0]+1
-                    self.isColidedLeft = True
-                    playSound('conflict2',offset/100.0)
+
+
+
+            if obs.rect.left < self.rect.right and obs.rect.left > self.rect.right-offset and not self.isColidedRight:
+                # print('collision at left')
+                self.speedX = (self.speedX)*-1*((obs.e+self.e)/2)
+                # self.x = obs.rect.left - self.img.get_width()
+                self.x = self.prevPos[0]-1
+                self.isColidedRight = True
+                playSound('conflict2',offset/100.0)
+            elif obs.rect.right >= self.rect.left and obs.rect.right <= self.rect.left+offset and not self.isColidedLeft:
+                # print('collision at right')
+                self.speedX = (self.speedX)*-1*((obs.e+self.e)/2)
+                # self.x = obs.rect.right
+                self.x = self.prevPos[0]+1
+                self.isColidedLeft = True
+                playSound('conflict2',offset/100.0)
+
+            if self.isColidedRight and self.isColidedLeft:
+                self.isColidedLeft = False
+                self.isColidedRight = False
+            if self.isColidedBottom and self.isColidedTop:
+                self.isColidedTop = False
+                self.isColidedBottom = False
+            if self.isColidedLeft or self.isColidedRight:
+                if self.speedX>0:
+                    self.isColidedRight = False
+                elif self.speedX<0:
+                    self.isColidedLeft = False
+
+
+
+            
 
                 
         
@@ -373,6 +388,9 @@ class AbstractUFO(pygame.sprite.Sprite):
             self.isColidedRight = False
             self.isColidedTop = False
             self.isColidedBottom = False
+            # print('reset')
+        self.prevPos = (self.x,self.y)
+        
 
     def shiftXPosition(self,deltaX,deltaT):
         tmp = self.x + deltaX*self.world.xMultiplier
@@ -412,7 +430,6 @@ class AbstractUFO(pygame.sprite.Sprite):
         if self.fuelLevel>0 and not self.isColidedLeft:
             dt = clock.get_time()/1000.0
             dx = self.speedX * dt + (abs(self.world.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX)+(-1*self.acceleration))*(dt**2)
-            # print('dx',dx)
             self.shiftXPosition(dx,dt)
             self.burnFuel()
             self.engineSound.set_volume(0.6)
@@ -423,8 +440,8 @@ class AbstractUFO(pygame.sprite.Sprite):
         if self.fuelLevel>0 and not self.isColidedRight:
             dt = clock.get_time()/1000.0
             dx = self.speedX * dt + (-1*abs(self.world.airFriction * self.HorizontalAirFrictionMultiplier * self.speedX)+(self.acceleration))*(dt**2)
-            # print('dx',dx)
             self.shiftXPosition(dx,dt)
+            self.isColidedLeft = False
             self.burnFuel()
             self.engineSound.set_volume(0.6)
         else:
@@ -435,7 +452,6 @@ class AbstractUFO(pygame.sprite.Sprite):
         if self.fuelLevel>0 and not self.isColidedTop:
             dt = clock.get_time()/1000.0
             dy = self.speedY * dt + (-1*abs(self.world.airFriction * self.VerticalAirFrictionMultiplier * self.speedY)+(self.liftingEnginCount*self.acceleration - self.world.gravity))*(dt**2)
-            # print('dy',dy)
             self.shiftYPosition(dy,dt)
             self.burnFuel(self.liftingEnginCount)
             self.engineSound.set_volume(0.8)
@@ -454,8 +470,8 @@ class AbstractUFO(pygame.sprite.Sprite):
             self.shiftXPosition(dx,dt)
         else:
             self.speedX = 0.0
+
         
-        # print('burn',self.speedX)
 
     def burnLinearInertiaY(self):
         if abs(self.speedY) - 0.8 > 0.0 or not self.isColidedBottom:
@@ -491,7 +507,6 @@ class AbstractUFO(pygame.sprite.Sprite):
             inBanner = True
             inGame = False
             
-            # print('burnY',self.speedY)
 
     def engineStandby(self):
         self.engineSound.set_volume(0.2)
@@ -607,11 +622,9 @@ def startLevel(currentLevel):
     data = loadLevelData('level{}.tmj'.format(currentLevel))
     tiles = TileSetContainer()
     for tileset in data['tilesets']:
-        # print('loading ',tileset['image'])
         tmp = TileSet(tileset['name'], pygame.image.load(tileset['image']).convert_alpha(), tileset['firstgid'], tiles, tileset['tilewidth'], tileset['tileheight'], tileset['imagewidth'], tileset['imageheight'])
         del(tmp)
         
-    # print(allTiles)
     layerData = {}
 
     world = World()
@@ -628,10 +641,8 @@ def startLevel(currentLevel):
             world.yMultiplier = prop['value']
         elif prop['name'] == 'offset_min':
             MIN_OFFSET = prop['value']
-            print('min offset set to ',MIN_OFFSET)
         elif prop['name'] == 'offset_max':
             MAX_OFFSET = prop['value']
-            print('max offset set to ',MAX_OFFSET)
 
     for layer in data['layers']:
         if layer['name'] == 'BaseLayer' or layer['name'] == 'Non_Interactive_obstacles':
@@ -640,7 +651,6 @@ def startLevel(currentLevel):
             l.set_colorkey((0,0,0))
             for x in range(data['width']):
                 for y in range(data['height']):
-                    # print('loading...',layer['data'][x + y * data['width']])
                     tile = tiles.getTile(layer['data'][x + y * data['width']])
                     l.blit(tile, (x * TILES_RES, y * TILES_RES))
             layerData[layer['name']]={ 'data': l, 'x': layer['x'], 'y': layer['y']}
@@ -710,6 +720,11 @@ def startLevel(currentLevel):
                         ufo.VerticalAirFrictionMultiplier = float(props['value'])
                     elif props['name'] == 'e':
                         ufo.e = float(props['value'])
+                    elif props['name'] == 'maxhealth':
+                        ufo.maxhealth = float(props['value'])
+                        ufo.health = float(props['value'])
+                    elif props['name'] == 'strength':
+                        ufo.strength = float(props['value'])
 
 
     background = Background(layerData['BaseLayer']['x'],layerData['BaseLayer']['y'],layerData['BaseLayer']['data'])
@@ -723,9 +738,11 @@ def startLevel(currentLevel):
     scoreLabmda = lambda: 'Chips: {}'.format(coinsValue)
     fuelLambda = lambda: 'Fuel: {:.7}/{:.5}'.format(ufo.fuelLevel,ufo.fuelCap)
     healthLambda = lambda: 'health: {:.7}/{:.5}'.format(ufo.health,ufo.maxhealth)
+    levelLambda = lambda: 'level {}'.format(level)
     score = TextMsg(5,0,scoreLabmda,WHITE)
     fuel = TextMsg(5,28,fuelLambda,WHITE)
     health = TextMsg(5,56,healthLambda,WHITE)
+    levelMsg = TextMsg(5,84,levelLambda,GOLD)
     bullet = Bullet(0,0)
 
 
@@ -734,21 +751,20 @@ def startLevel(currentLevel):
     text_group.add(score)
     text_group.add(fuel)
     text_group.add(health)
+    text_group.add(levelMsg)
     return ufo
 
 def keepInCamBounds(allObjects):
     global current_offset
     global MAX_OFFSET
     global MIN_OFFSET
-    if ufo.x <= CAM_BOX.left and  current_offset <= MAX_OFFSET:
-        print('ufo going left',current_offset ,'<=',MAX_OFFSET , ufo.x ,'<=', CAM_BOX.left)
+    if ufo.x < CAM_BOX.left and  current_offset < MAX_OFFSET:
         current_offset += CAM_BOX.left - ufo.x
         for obj_grp in allObjects:
             for obj in obj_grp:
                 obj.x += CAM_BOX.left - ufo.x
                 obj.update()
-    elif ufo.x >= CAM_BOX.right and current_offset >= MIN_OFFSET:
-        print('ufo going right',current_offset , '',MIN_OFFSET , ufo.x,'>=',CAM_BOX.right)
+    elif ufo.x > CAM_BOX.right and current_offset > MIN_OFFSET:
         current_offset -= ufo.x - CAM_BOX.right
         for obj_grp in allObjects:
             for obj in obj_grp:
@@ -774,6 +790,9 @@ def drawGame():
         colisions = pygame.sprite.spritecollide(ufo,obstacle_group,False,pygame.sprite.collide_mask)
         if colisions:
             ufo.collide(colisions)
+            # print('colied',ufo.isColidedLeft,ufo.isColidedRight,ufo.isColidedTop,ufo.isColidedBottom)
+        else:
+            ufo.noColied()
     else:
         ufo.noColied()
     
@@ -809,6 +828,10 @@ def drawGame():
         banner_msg_group.add(Banner('YOU WIN',GOLD))
         text_group.add(TextMsg(WIDTH//2-150,HEIGHT//2+50,None,GRAY,'(press enter key to continue.)'))
         unlockNextLevel()
+        global level
+        global menuOBJ
+        if len(menuOBJ[1]['subMenu'])>=level+1:
+            level+=1
         inGame = False
         inBanner = True
 
@@ -886,7 +909,8 @@ class Menu:
         else:
             self.offset = 0
         for i in range(min(5,len(self.currentObj))):
-            self.menuItems_group.add(TextMsg(WIDTH//2 - 100,HEIGHT//2 -100 +i*50,None,WHITE,self.currentObj[i+self.offset]['text']))
+            m = TextMsg(WIDTH//2 - 100,HEIGHT//2 -100 +i*50,None,WHITE,self.currentObj[i+self.offset]['text'])
+            self.menuItems_group.add(m)
         if len(self.currentObj) > 5:
             self.hasMore = True
         else:
@@ -914,6 +938,9 @@ class Menu:
 
     def select(self):
         sm =  self.currentObj[self.selectedIndex]
+        global ufo
+        global inGame
+        global level
         if sm['subMenu']:
             self.previousObj.append(self.currentObj)
             self.currentObj = sm['subMenu']
@@ -924,13 +951,15 @@ class Menu:
         elif sm['cmd']:
             if sm['cmd'] == 'quit':
                 quit()
-            elif sm['cmd'][:5]=='level':
-                global ufo
-                global inGame
-                ufo = startLevel(int(sm['cmd'][5:]))
+            elif sm['cmd'][:5]=='level' and not self.isDisable:
+                level = int(sm['cmd'][5:])
+                ufo = startLevel(level)
                 print(MAX_OFFSET,MIN_OFFSET)
                 inGame = True
-                playSound('splash',1) 
+                playSound('splash',1)
+            elif sm['cmd']=='continue' and not self.isDisable:
+                ufo = startLevel(int(level))
+                inGame = True
         else:
             print('nothing to execute')
     
@@ -953,8 +982,11 @@ class Menu:
                     self.isDisable = True
                 else:
                     self.isDisable = False
+            elif self.currentObj[i+self.offset]['isDisable']:
+                self.menuItems_group.sprites()[i].setColor(GRAY)
             else:
                 self.menuItems_group.sprites()[i].setColor(WHITE)
+
 
     def reset(self):
         self.currentObj = self.menuObj
