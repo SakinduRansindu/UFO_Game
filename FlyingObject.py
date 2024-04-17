@@ -22,7 +22,75 @@ PADDING = 600
 CAM_BOX = pygame.Rect(100,0,WIDTH - PADDING,HEIGHT)
 MAX_OFFSET = 0
 MIN_OFFSET = -232
+menuOBJ = {
+    0: {
+        'text': 'Start Game',
+        'isDisable':False,
+        'subMenu': None,
+        'cmd':None
+    },
+    1: {
+        'text': 'Levels',
+        'isDisable':False,
+        'subMenu': {
+            0: {
+                'text': 'Level 1',
+                'isDisable':False,
+                'subMenu': None,
+                'cmd':'level3'
+            },
+            1: {
+                'text': 'Level 2',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+            },
+            2: {
+                'text': 'Level 3',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
 
+            },
+            3: {
+                'text': 'Level 4',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+            4: {
+                'text': 'Level 5',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+            5: {
+                'text': 'Level 6',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+            6: {
+                'text': 'Level 7',
+                'isDisable':True,
+                'subMenu': None,
+                'cmd':None
+
+            },
+        }
+    },
+    2: {
+        'text': 'Exit',
+        'isDisable':False,
+        'subMenu': None,
+        'cmd':'quit'
+    }
+}
+
+level = 0
 
 # load level data 
 def loadLevelData(levelFile):
@@ -32,17 +100,45 @@ def loadLevelData(levelFile):
     return data
 
 def loadUserData():
+    global menuOBJ
+    print('befor',menuOBJ)
     if not os.path.exists('userData.dat'):
         with open('userData.dat','w') as f:
-            f.write('{"coins":0,"currentLevel":1}')
+            f.write(json.dumps({'coins':0,'currentLevel':0,'levels':menuOBJ[1]['subMenu']}))
     json_data = open('userData.dat').read()
     data = json.loads(json_data)
+    for l in data['levels'].keys():
+        menuOBJ[1]['subMenu'][int(l)]['isDisable'] = data['levels'][l]['isDisable']
     del(json_data)
-    return data
+    global level
+    global coinsValue
+    coinsValue = data['coins']
+    for l in data['levels']:
+        if data['levels'][l]['isDisable']:
+            level = int(l)
+            break
+    print('after',menuOBJ)
 
-def saveUserData(coins,currentLevel):
+def unlockNextLevel():
+    global menuOBJ
+    global level
+    for l in menuOBJ[1]['subMenu']:
+        if menuOBJ[1]['subMenu'][l]['isDisable']:
+            level = int(l)
+            menuOBJ[1]['subMenu'][l]['isDisable'] = False
+            break
+    saveUserData()
+
+
+
+def saveUserData():
+    global menuOBJ
+    global coinsValue
+    global level
     with open('userData.dat','w') as f:
-        f.write(json.dumps({'coins':coins,'currentLevel':currentLevel}))
+        f.write(json.dumps({'coins':coinsValue,'currentLevel':str(level),'levels':menuOBJ[1]['subMenu']}))
+
+loadUserData()
 
 ########################################
 ####        Global Variables        ####
@@ -228,6 +324,7 @@ class AbstractUFO(pygame.sprite.Sprite):
                         banner.update()
                         banner_msg_group.add(banner)
                         text_group.add(TextMsg(WIDTH//2-150,HEIGHT//2+50,None,GRAY,'(press enter key to continue.)'))
+                        loadUserData()
                         inBanner = True
                         inGame = False
                     else:
@@ -390,6 +487,7 @@ class AbstractUFO(pygame.sprite.Sprite):
             banner.update()
             banner_msg_group.add(banner)
             text_group.add(TextMsg(WIDTH//2-150,HEIGHT//2+50,None,GRAY,'(press enter key to continue.)'))
+            loadUserData()
             inBanner = True
             inGame = False
             
@@ -706,12 +804,13 @@ def drawGame():
         global inGame
         global menu
         menu.reset()
-        inGame = False
-        inBanner = True
         print('You Win')
         playSound('win',1)
         banner_msg_group.add(Banner('YOU WIN',GOLD))
         text_group.add(TextMsg(WIDTH//2-150,HEIGHT//2+50,None,GRAY,'(press enter key to continue.)'))
+        unlockNextLevel()
+        inGame = False
+        inBanner = True
 
         
     keepInCamBounds([obstacle_group,fuel_can_group,coins_group,gameObjective_group,background_group,ufo_group])
@@ -753,75 +852,6 @@ def drawGame():
     if not (linearMovementX or linearMovementY):
         ufo.engineStandby()
 
-
-
-menuOBJ = {
-    0: {
-        'text': 'Start Game',
-        'isDisable':False,
-        'subMenu': None,
-        'cmd':None
-    },
-    1: {
-        'text': 'Levels',
-        'isDisable':False,
-        'subMenu': {
-            0: {
-                'text': 'Level 1',
-                'isDisable':False,
-                'subMenu': None,
-                'cmd':'level3'
-            },
-            1: {
-                'text': 'Level 2',
-                'isDisable':True,
-                'subMenu': None,
-                'cmd':None
-            },
-            2: {
-                'text': 'Level 3',
-                'isDisable':True,
-                'subMenu': None,
-                'cmd':None
-
-            },
-            3: {
-                'text': 'Level 4',
-                'isDisable':True,
-                'subMenu': None,
-                'cmd':None
-
-            },
-            4: {
-                'text': 'Level 5',
-                'isDisable':True,
-                'subMenu': None,
-                'cmd':None
-
-            },
-            5: {
-                'text': 'Level 6',
-                'isDisable':True,
-                'subMenu': None,
-                'cmd':None
-
-            },
-            6: {
-                'text': 'Level 7',
-                'isDisable':True,
-                'subMenu': None,
-                'cmd':None
-
-            },
-        }
-    },
-    2: {
-        'text': 'Exit',
-        'isDisable':False,
-        'subMenu': None,
-        'cmd':'quit'
-    }
-}
 
 class Menu:
     def __init__(self,menuObj):
