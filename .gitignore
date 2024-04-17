@@ -1,2 +1,5 @@
 userData.dat
 /__pycache__
+/dist
+/build
+*.spec
