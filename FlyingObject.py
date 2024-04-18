@@ -4,6 +4,7 @@ from loadLevels import *
 import json
 import os
 import math
+from resoureceLoader import *
 
 ########################################
 ####        Global Consts           ####
@@ -97,7 +98,7 @@ level = 1
 
 # load level data 
 def loadLevelData(levelFile):
-    json_data = open('levels/'+levelFile).read()
+    json_data = open(resource_path('levels/'+levelFile)).read()
     data = json.loads(json_data)
     del(json_data)
     return data
@@ -171,7 +172,7 @@ pygame.mixer.init()
 pygame.mixer.set_num_channels(16)
 for key in sounds:
     print('loading sound file ',key)
-    loadedSounds[key] = pygame.mixer.Sound('sounds/'+sounds[key])
+    loadedSounds[key] = pygame.mixer.Sound(resource_path('sounds/'+sounds[key]))
 
 def playSound(sound_key,volume,loops=0,reserved=False):
     if reserved:
@@ -625,7 +626,7 @@ def startLevel(currentLevel):
     data = loadLevelData('level{}.tmj'.format(currentLevel))
     tiles = TileSetContainer()
     for tileset in data['tilesets']:
-        tmp = TileSet(tileset['name'], pygame.image.load(tileset['image']).convert_alpha(), tileset['firstgid'], tiles, tileset['tilewidth'], tileset['tileheight'], tileset['imagewidth'], tileset['imageheight'])
+        tmp = TileSet(tileset['name'], pygame.image.load(resource_path(tileset['image'])).convert_alpha(), tileset['firstgid'], tiles, tileset['tilewidth'], tileset['tileheight'], tileset['imagewidth'], tileset['imageheight'])
         del(tmp)
         
     layerData = {}
@@ -953,7 +954,7 @@ class Menu:
             playSound('grab',1)
         elif sm['cmd']:
             if sm['cmd'] == 'quit':
-                quit()
+                sys.exit()
             elif sm['cmd'][:5]=='level' and not self.isDisable:
                 level = int(sm['cmd'][5:])
                 ufo = startLevel(level)

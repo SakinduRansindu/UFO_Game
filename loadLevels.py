@@ -1,4 +1,5 @@
 import pygame
+from resoureceLoader import *
 
 # pygame.init()
 # win = pygame.display.set_mode((1200,800))
