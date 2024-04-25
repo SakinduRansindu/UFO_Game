@@ -26,4 +26,4 @@ All audio files are taken from [Mixkit](https://mixkit.co/)
   ![ufo2](https://github.com/SakinduRansindu/UFO_Game/assets/67496875/e88c0a1c-77f0-4bef-9ad3-db369a8e24cd)
   ![ufo1](https://github.com/SakinduRansindu/UFO_Game/assets/67496875/30b33d19-9e2e-4ce7-99e0-8545f58d4c9f)
   ![ufo5](https://github.com/SakinduRansindu/UFO_Game/assets/67496875/a26c99ec-d6fd-488c-90a8-e994208f26b8)
-<img src="https://api.sharedcount.com/v1.1?apikey=b3183179e141479c68b8b2a9df6b7bc0e6298571&url=https://nytimes.com/" alt=''/>
+<img src='https://api.sharedcount.com/v1.1?apikey=b3183179e141479c68b8b2a9df6b7bc0e6298571&url=https://github.com/' alt=''/>
